@@ -41,6 +41,7 @@ select{flex:1;min-width:180px}
 <select id="ch"></select>
 <button id="mode" class="p">Show all</button>
 <button id="shuf">Shuffle: off</button>
+<button id="restart">Restart this set</button>
 <button id="reset">Reset score</button>
 <button id="clrw" style="display:none">Clear wrong list</button>
 </div>
@@ -54,6 +55,11 @@ const store={
   get(k){try{return new Set(JSON.parse(localStorage.getItem(k)||'[]'));}catch(e){return new Set();}},
   set(k,s){try{localStorage.setItem(k,JSON.stringify([...s]));}catch(e){}}
 };
+const kv={
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+};
+const prog=kv.get('uk_prog',{});
 const wrong=store.get('uk_wrong'),flags=store.get('uk_flag');
 const state={}; // key -> {sel:Set, done:bool}
 const score={c:0,t:0};
@@ -61,7 +67,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 DATA.forEach((c,ci)=>c.qs.forEach(q=>{q.k=ci+'-'+q.n;q.ch=c.name;}));
 const sel=$('#ch');
-const ALLQ=DATA.flatMap(c=>c.qs);
+const ALLQ=DATA.flatMap(c=>c.qs);ALLQ.forEach((q,g)=>q.g=g);
 function fillSel(){
   sel.innerHTML=`<option value="wrong">❌ My wrong answers (${[...wrong].filter(k=>ALLQ.some(q=>q.k===k)).length})</option>
   <option value="flag">🚩 Flagged questions (${[...flags].filter(k=>ALLQ.some(q=>q.k===k)).length})</option>
@@ -72,7 +78,11 @@ function build(){
   list=chap==='all'?ALLQ.slice():chap==='wrong'?ALLQ.filter(q=>wrong.has(q.k)):chap==='flag'?ALLQ.filter(q=>flags.has(q.k)):DATA[+chap].qs.slice();
   $('#clrw').style.display=chap==='wrong'?'':'none';
   if(shuffle){list=list.slice();for(let k=list.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[list[k],list[j]]=[list[j],list[k]];}}
-  i=0;fillSel();render();
+  i=0;
+  if(!shuffle&&prog[chap]){const last=ALLQ.find(q=>q.k===prog[chap]);
+    if(last){const j=list.findIndex(x=>x.g>last.g);i=j<0?0:j;}}
+  kv.set('uk_set',chap);
+  fillSel();render();
 }
 function st(q){return state[q.k]||(state[q.k]={sel:new Set(),done:false});}
 function flagBtn(q){return `<button class="fl ${flags.has(q.k)?'on':''}" data-flag="${q.k}">${flags.has(q.k)?'🚩 Flagged':'⚑ Flag'}</button>`;}
@@ -112,7 +122,9 @@ function renderOne(){
   $('#sub').onclick=()=>{s.done=true;score.t++;
     const ok=q.a.length===s.sel.size&&q.a.every(x=>s.sel.has(x));
     if(ok){score.c++;wrong.delete(q.k);}else wrong.add(q.k);
-    store.set('uk_wrong',wrong);fillSel();renderOne();};
+    store.set('uk_wrong',wrong);
+    if(!shuffle){prog[chap]=q.k;kv.set('uk_prog',prog);}
+    fillSel();renderOne();};
   $('#prev').onclick=()=>{i--;renderOne();scrollTo(0,0);};
   $('#next').onclick=()=>{i++;renderOne();scrollTo(0,0);};
 }
@@ -129,6 +141,9 @@ sel.onchange=()=>{chap=sel.value;build();};
 $('#mode').onclick=()=>{showAll=!showAll;$('#mode').textContent=showAll?'Back to quiz':'Show all';render();scrollTo(0,0);};
 $('#shuf').onclick=()=>{shuffle=!shuffle;$('#shuf').textContent='Shuffle: '+(shuffle?'on':'off');build();};
 $('#clrw').onclick=()=>{if(confirm('Clear your whole wrong-answers list?')){wrong.clear();store.set('uk_wrong',wrong);build();}};
+$('#restart').onclick=()=>{delete prog[chap];kv.set('uk_prog',prog);build();scrollTo(0,0);};
 $('#reset').onclick=()=>{for(const k in state)delete state[k];score.c=score.t=0;i=0;render();};
-chap=wrong.size?'wrong':'all';build();
+const savedSet=kv.get('uk_set',null);
+chap=(savedSet&&(['all','wrong','flag'].includes(savedSet)||DATA[+savedSet]))?savedSet:(wrong.size?'wrong':'all');
+build();
 </script></body></html>
